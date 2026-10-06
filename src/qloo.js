@@ -22,13 +22,14 @@ function runQloo(workflow, input) {
       JSON.stringify(input)
     ];
 
-    execFile(
-      "qloo",
-      args,
+   execFile(
+      "cmd.exe",
+      ["/d", "/s", "/c", "qloo.cmd", ...args],
       {
         windowsHide: true,
         maxBuffer: 1024 * 1024
       },
+
       (error, stdout, stderr) => {
         if (error) {
           reject(
