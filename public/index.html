@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CultureShift AI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <header>
+    <h1>CultureShift AI</h1>
+    <p>
+      Find the minimum cultural adaptation needed to reach
+      a new taste audience while preserving cultural identity.
+    </p>
+  </header>
+
+  <main>
+
+    <section>
+      <h2>1. Cultural Experience</h2>
+
+      <label for="experience">Experience</label>
+      <input
+        id="experience"
+        type="text"
+        value="Indian classical cultural experience"
+      >
+    </section>
+
+    <section>
+      <h2>2. Target Audience</h2>
+
+      <label for="audience">Taste signal</label>
+      <select id="audience">
+        <option value="bts">BTS audience</option>
+        <option value="metallica">Metallica audience</option>
+      </select>
+    </section>
+
+    <section>
+      <h2>3. Protect Cultural Identity</h2>
+
+      <label>
+        <input
+          type="checkbox"
+          id="protect-classical"
+          checked
+        >
+        MUST PRESERVE: Indian classical music
+      </label>
+
+      <br>
+
+      <label>
+        <input
+          type="checkbox"
+          id="protect-sitar"
+          checked
+        >
+        MUST PRESERVE: Sitar
+      </label>
+    </section>
+
+    <section>
+      <h2>4. Candidate Cultural Bridges</h2>
+
+      <ul>
+        <li>Ravi Shankar</li>
+        <li>Anoushka Shankar</li>
+        <li>A.R. Rahman</li>
+      </ul>
+    </section>
+
+    <section>
+      <button id="run-button">
+        Find Minimum Cultural Bridge
+      </button>
+    </section>
+
+    <section id="result">
+      <h2>CultureShift Decision</h2>
+      <p>
+        Run the agent to evaluate protected constraints
+        and find the least invasive feasible bridge.
+      </p>
+    </section>
+
+  </main>
+
+ <script src="app.js"></script>
+</body>
+</html>
