@@ -328,14 +328,17 @@ export default {
         }
 
         const requestedPreserveTags = [];
+        const preserve = Array.isArray(body.preserve)
+          ? body.preserve
+          : [];
 
-        if (body.preserveClassical) {
+        if (body.preserveClassical || preserve.includes("classical")) {
           requestedPreserveTags.push(
             PRESERVE_TAGS.classical
           );
         }
 
-        if (body.preserveSitar) {
+        if (body.preserveSitar || preserve.includes("sitar")) {
           requestedPreserveTags.push(
             PRESERVE_TAGS.sitar
           );
