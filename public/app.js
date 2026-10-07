@@ -7,6 +7,8 @@ const candidateNames = {
   "9986F595-C20E-4EBB-828F-55E7DEEBE448": "A.R. Rahman"
 };
 
+const scopeNames = {0: "No change", 1: "Discovery and framing", 2: "Accompaniment and context", 3: "Core modification"};
+
 const constraintNames = {
   "urn:tag:genre:music:indian_classical": "Indian classical music",
   "urn:tag:instrument:qloo:sitar": "Sitar"
@@ -135,8 +137,8 @@ runButton.addEventListener("click", async () => {
 
       <div class="decision-summary">
         <div>
-          <span>Minimum scope</span>
-          <strong>${result.interventionScope}</strong>
+          <span>Minimum intervention</span>
+          <strong>Scope ${result.interventionScope} - ${scopeNames[result.interventionScope] || "Defined intervention"}</strong>
         </div>
 
         <div>
