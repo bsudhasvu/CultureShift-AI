@@ -10,19 +10,42 @@
 <body>
 
   <header>
-    <h1>CultureShift AI</h1>
-    <p>
-      Find the minimum cultural adaptation needed to reach
-      a new taste audience while preserving cultural identity.
-    </p>
+    <div class="hero">
+      <p class="eyebrow">QLOO POWERED CULTURAL DECISION AGENT</p>
+
+      <h1>CultureShift AI</h1>
+
+      <p class="hero-text">
+        Reach a new taste audience with the minimum cultural change
+        while protecting the identity that must remain.
+      </p>
+
+      <div class="hero-flow">
+        <span>Target Audience</span>
+        <strong>→</strong>
+        <span>Identity Constraints</span>
+        <strong>→</strong>
+        <span>Qloo Ranking</span>
+        <strong>→</strong>
+        <span>Minimum Change</span>
+      </div>
+    </div>
   </header>
 
   <main>
 
-    <section>
-      <h2>1. Cultural Experience</h2>
+    <section class="intro-card">
+      <div>
+        <span class="step-number">01</span>
+        <h2>Define the cultural experience</h2>
+      </div>
 
-      <label for="experience">Experience</label>
+      <p class="section-note">
+        Start with the experience whose cultural identity should be protected.
+      </p>
+
+      <label for="experience">Cultural experience</label>
+
       <input
         id="experience"
         type="text"
@@ -31,9 +54,17 @@
     </section>
 
     <section>
-      <h2>2. Target Audience</h2>
+      <div>
+        <span class="step-number">02</span>
+        <h2>Select the target taste audience</h2>
+      </div>
 
-      <label for="audience">Taste signal</label>
+      <p class="section-note">
+        Qloo provides the audience taste signal used to rank feasible bridges.
+      </p>
+
+      <label for="audience">Audience taste signal</label>
+
       <select id="audience">
         <option value="bts">BTS audience</option>
         <option value="metallica">Metallica audience</option>
@@ -41,55 +72,103 @@
     </section>
 
     <section>
-      <h2>3. Protect Cultural Identity</h2>
+      <div>
+        <span class="step-number">03</span>
+        <h2>Protect cultural identity</h2>
+      </div>
 
-      <label>
-        <input
-          type="checkbox"
-          id="protect-classical"
-          checked
-        >
-        MUST PRESERVE: Indian classical music
-      </label>
+      <p class="section-note">
+        These are hard constraints. CultureShift does not trade them
+        away for a higher audience score.
+      </p>
 
-      <br>
+      <div class="constraint-box">
+        <label>
+          <input
+            type="checkbox"
+            id="protect-classical"
+            checked
+          >
+          <span>
+            <strong>MUST PRESERVE</strong>
+            Indian classical music
+          </span>
+        </label>
 
-      <label>
-        <input
-          type="checkbox"
-          id="protect-sitar"
-          checked
-        >
-        MUST PRESERVE: Sitar
-      </label>
+        <label>
+          <input
+            type="checkbox"
+            id="protect-sitar"
+            checked
+          >
+          <span>
+            <strong>MUST PRESERVE</strong>
+            Sitar
+          </span>
+        </label>
+      </div>
     </section>
 
     <section>
-      <h2>4. Candidate Cultural Bridges</h2>
+      <div>
+        <span class="step-number">04</span>
+        <h2>Candidate cultural bridges</h2>
+      </div>
 
-      <ul>
-        <li>Ravi Shankar</li>
-        <li>Anoushka Shankar</li>
-        <li>A.R. Rahman</li>
-      </ul>
+      <p class="section-note">
+        CultureShift tests candidate interventions against the protected
+        constraints before Qloo ranks the surviving alternatives.
+      </p>
+
+      <div class="candidate-grid">
+        <article>
+          <span>Candidate A</span>
+          <h3>Ravi Shankar</h3>
+          <p>Intervention scope: accompaniment and context</p>
+        </article>
+
+        <article>
+          <span>Candidate B</span>
+          <h3>Anoushka Shankar</h3>
+          <p>Intervention scope: accompaniment and context</p>
+        </article>
+
+        <article>
+          <span>Candidate C</span>
+          <h3>A.R. Rahman</h3>
+          <p>Intervention scope: accompaniment and context</p>
+        </article>
+      </div>
     </section>
 
-    <section>
+    <section class="action-card">
+      <p>
+        CultureShift searches for the lowest-scope intervention that
+        satisfies every protected constraint.
+      </p>
+
       <button id="run-button">
         Find Minimum Cultural Bridge
       </button>
     </section>
 
-    <section id="result">
-      <h2>CultureShift Decision</h2>
+    <section id="result" class="result-card">
+      <span class="result-label">AGENT DECISION</span>
+
+      <h2>Ready for evaluation</h2>
+
       <p>
-        Run the agent to evaluate protected constraints
-        and find the least invasive feasible bridge.
+        Run CultureShift to enforce the protected constraints and rank
+        only the feasible minimum-change bridges using Qloo.
       </p>
     </section>
 
   </main>
 
- <script src="app.js"></script>
+  <footer>
+    CultureShift AI · Qloo powered constrained cultural adaptation
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
