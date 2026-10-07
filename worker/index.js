@@ -1,15 +1,31 @@
 const QLOO_BASE_URL = "https://hackathon.api.qloo.com";
 
-const INSIGHTS_TYPES = {
-  artist: "urn:entity:artist",
-  book: "urn:entity:book",
-  brand: "urn:entity:brand",
-  movie: "urn:entity:movie",
-  person: "urn:entity:person",
-  place: "urn:entity:place",
-  podcast: "urn:entity:podcast",
-  tv_show: "urn:entity:tv_show",
-  videogame: "urn:entity:videogame"
+const CANDIDATES = [
+  {
+    id: "E7EBD7F6-5B44-4AEB-BEA0-92317FD35BC3",
+    name: "Ravi Shankar",
+    scope: 2
+  },
+  {
+    id: "B44BC27C-9617-41F8-9143-C9C7B499543A",
+    name: "Anoushka Shankar",
+    scope: 2
+  },
+  {
+    id: "9986F595-C20E-4EBB-828F-55E7DEEBE448",
+    name: "A.R. Rahman",
+    scope: 2
+  }
+];
+
+const AUDIENCE_SIGNALS = {
+  bts: "F347D506-CB6F-46FA-9A8B-AFBC31C71A1A",
+  metallica: "C445C761-CB38-4FEE-B085-D35F444A04DF"
+};
+
+const PRESERVE_TAGS = {
+  classical: "urn:tag:genre:music:indian_classical",
+  sitar: "urn:tag:instrument:qloo:sitar"
 };
 
 function appendQuery(url, key, value) {
@@ -25,9 +41,63 @@ function appendQuery(url, key, value) {
   url.searchParams.set(key, String(value));
 }
 
-async function qlooInsights(env, query) {
+function extractEntities(response) {
+  const results = response?.results;
+
+  if (Array.isArray(results)) return results;
+
+  if (
+    results &&
+    typeof results === "object" &&
+    Array.isArray(results.entities)
+  ) {
+    return results.entities;
+  }
+
+  return [];
+}
+
+function compactEntity(value) {
+  if (!value || typeof value !== "object") return null;
+
+  const query =
+    value.query &&
+    typeof value.query === "object"
+      ? value.query
+      : null;
+
+  return {
+    entity_id: value.entity_id ?? value.id,
+    name: value.name,
+    type: value.type,
+    subtype: value.subtype,
+    popularity: value.popularity,
+    affinity: value.affinity ?? query?.affinity
+  };
+}
+
+async function qlooRank(
+  env,
+  {
+    options,
+    audienceSignals,
+    includeTags = []
+  }
+) {
   if (!env.QLOO_API_KEY) {
     throw new Error("QLOO_API_KEY is not configured.");
+  }
+
+  const query = {
+    "filter.type": "urn:entity:artist",
+    "filter.results.entities": options,
+    take: options.length,
+    "signal.interests.entities": audienceSignals
+  };
+
+  if (includeTags.length > 0) {
+    query["filter.tags"] = includeTags;
+    query["operator.filter.tags"] = "union";
   }
 
   const url = new URL("/v2/insights", QLOO_BASE_URL);
@@ -44,7 +114,17 @@ async function qlooInsights(env, query) {
     }
   });
 
-  const body = await response.json();
+  const text = await response.text();
+
+  let body;
+
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      `Qloo returned non-JSON data with HTTP ${response.status}.`
+    );
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -55,26 +135,242 @@ async function qlooInsights(env, query) {
     );
   }
 
-  return body;
+  const results = extractEntities(body)
+    .map(compactEntity)
+    .filter(Boolean)
+    .slice(0, options.length);
+
+  return {
+    status: "ok",
+    results,
+    result_count: results.length
+  };
+}
+
+function extractEntityIds(response) {
+  if (!Array.isArray(response?.results)) {
+    return [];
+  }
+
+  return response.results
+    .map(result => result?.entity_id)
+    .filter(Boolean);
+}
+
+function intersectCandidates(original, allowedSets) {
+  if (allowedSets.length === 0) {
+    return [...original];
+  }
+
+  return original.filter(candidate =>
+    allowedSets.every(set => set.has(candidate))
+  );
+}
+
+async function applyPreserveConstraints(
+  env,
+  {
+    options,
+    audienceSignals,
+    preserveTags = []
+  }
+) {
+  if (preserveTags.length === 0) {
+    return {
+      feasible: [...options],
+      evidence: []
+    };
+  }
+
+  const evidence = [];
+  const allowedSets = [];
+
+  for (const tag of preserveTags) {
+    const response = await qlooRank(env, {
+      options,
+      audienceSignals,
+      includeTags: [tag]
+    });
+
+    const allowed = extractEntityIds(response);
+
+    evidence.push({
+      constraint: tag,
+      allowed
+    });
+
+    allowedSets.push(new Set(allowed));
+  }
+
+  return {
+    feasible: intersectCandidates(options, allowedSets),
+    evidence
+  };
+}
+
+function selectMinimumChange(candidates) {
+  const feasible = candidates.filter(
+    candidate => candidate.feasible === true
+  );
+
+  if (feasible.length === 0) {
+    return {
+      decision: "DO_NOT_CHANGE",
+      reason: "No candidate satisfies all protected constraints."
+    };
+  }
+
+  const minimumScope = Math.min(
+    ...feasible.map(candidate => candidate.scope)
+  );
+
+  return {
+    decision: "RANK_WITH_QLOO",
+    scope: minimumScope,
+    candidates: feasible.filter(
+      candidate => candidate.scope === minimumScope
+    )
+  };
+}
+
+async function runCultureShift(
+  env,
+  {
+    candidates,
+    audienceSignals,
+    preserveTags = []
+  }
+) {
+  const candidateIds = candidates.map(candidate => candidate.id);
+
+  const constraintResult = await applyPreserveConstraints(
+    env,
+    {
+      options: candidateIds,
+      audienceSignals,
+      preserveTags
+    }
+  );
+
+  const feasibleIds = new Set(constraintResult.feasible);
+
+  const constrainedCandidates = candidates.map(candidate => ({
+    ...candidate,
+    feasible: feasibleIds.has(candidate.id)
+  }));
+
+  const minimumChange =
+    selectMinimumChange(constrainedCandidates);
+
+  if (minimumChange.decision === "DO_NOT_CHANGE") {
+    return {
+      decision: "DO_NOT_CHANGE",
+      reason: minimumChange.reason,
+      constraintEvidence: constraintResult.evidence
+    };
+  }
+
+  const optionsToRank =
+    minimumChange.candidates.map(candidate => candidate.id);
+
+  const ranking = await qlooRank(env, {
+    options: optionsToRank,
+    audienceSignals
+  });
+
+  return {
+    decision: "BRIDGE_FOUND",
+    interventionScope: minimumChange.scope,
+    candidatesConsidered: optionsToRank,
+    constraintEvidence: constraintResult.evidence,
+    ranking
+  };
+}
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8"
+    }
+  });
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/health") {
-      return Response.json({
+    if (
+      request.method === "GET" &&
+      url.pathname === "/health"
+    ) {
+      return json({
         status: "ok",
         service: "CultureShift AI"
       });
     }
 
-    return Response.json(
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/evaluate"
+    ) {
+      try {
+        const body = await request.json();
+
+        const audienceSignal =
+          AUDIENCE_SIGNALS[body.audience];
+
+        if (!audienceSignal) {
+          return json(
+            { error: "Unsupported audience." },
+            400
+          );
+        }
+
+        const requestedPreserveTags = [];
+
+        if (body.preserveClassical) {
+          requestedPreserveTags.push(
+            PRESERVE_TAGS.classical
+          );
+        }
+
+        if (body.preserveSitar) {
+          requestedPreserveTags.push(
+            PRESERVE_TAGS.sitar
+          );
+        }
+
+        const result = await runCultureShift(env, {
+          candidates: CANDIDATES,
+          audienceSignals: [audienceSignal],
+          preserveTags: requestedPreserveTags
+        });
+
+        return json(result);
+      } catch (error) {
+        console.error(
+          "CultureShift evaluation failed:",
+          error
+        );
+
+        return json(
+          {
+            error: "CultureShift evaluation failed."
+          },
+          500
+        );
+      }
+    }
+
+    return json(
       {
         status: "ok",
-        message: "CultureShift AI Worker is running."
+        service: "CultureShift AI",
+        message:
+          "Use POST /api/evaluate to run the cultural decision agent."
       },
-      { status: 200 }
+      200
     );
   }
 };
