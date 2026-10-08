@@ -1,3 +1,4 @@
+
 const QLOO_BASE_URL = "https://hackathon.api.qloo.com";
 
 const CANDIDATES = [
@@ -28,8 +29,45 @@ const PRESERVE_TAGS = {
   sitar: "urn:tag:instrument:qloo:sitar"
 };
 
+/*
+ * Intervention scope is defined by CultureShift.
+ * It is not a score or prediction returned by Qloo.
+ */
+const INTERVENTION_OPTIONS = [
+  {
+    id: "discovery-framing",
+    scope: 1,
+    name: "Discovery and framing",
+    action:
+      "Change the promotional description and audience-facing introduction.",
+    changesCorePerformance: false
+  },
+  {
+    id: "accompaniment-context",
+    scope: 2,
+    name: "Accompaniment and context",
+    action:
+      "Add an explanatory introduction or supporting presentation without altering the performance.",
+    changesCorePerformance: false
+  },
+  {
+    id: "core-modification",
+    scope: 3,
+    name: "Core modification",
+    action:
+      "Modify elements of the original cultural performance.",
+    changesCorePerformance: true
+  }
+];
+
 function appendQuery(url, key, value) {
-  if (value === undefined || value === null || value === "") return;
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return;
+  }
 
   if (Array.isArray(value)) {
     if (value.length > 0) {
@@ -44,7 +82,9 @@ function appendQuery(url, key, value) {
 function extractEntities(response) {
   const results = response?.results;
 
-  if (Array.isArray(results)) return results;
+  if (Array.isArray(results)) {
+    return results;
+  }
 
   if (
     results &&
@@ -58,7 +98,9 @@ function extractEntities(response) {
 }
 
 function compactEntity(value) {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object") {
+    return null;
+  }
 
   const query =
     value.query &&
@@ -85,7 +127,9 @@ async function qlooRank(
   }
 ) {
   if (!env.QLOO_API_KEY) {
-    throw new Error("QLOO_API_KEY is not configured.");
+    throw new Error(
+      "QLOO_API_KEY is not configured."
+    );
   }
 
   const query = {
@@ -100,7 +144,10 @@ async function qlooRank(
     query["operator.filter.tags"] = "union";
   }
 
-  const url = new URL("/v2/insights", QLOO_BASE_URL);
+  const url = new URL(
+    "/v2/insights",
+    QLOO_BASE_URL
+  );
 
   for (const [key, value] of Object.entries(query)) {
     appendQuery(url, key, value);
@@ -110,7 +157,7 @@ async function qlooRank(
     method: "GET",
     headers: {
       "X-Api-Key": env.QLOO_API_KEY,
-      "Accept": "application/json"
+      Accept: "application/json"
     }
   });
 
@@ -203,7 +250,10 @@ async function applyPreserveConstraints(
   }
 
   return {
-    feasible: intersectCandidates(options, allowedSets),
+    feasible: intersectCandidates(
+      options,
+      allowedSets
+    ),
     evidence
   };
 }
@@ -216,7 +266,8 @@ function selectMinimumChange(candidates) {
   if (feasible.length === 0) {
     return {
       decision: "DO_NOT_CHANGE",
-      reason: "No candidate satisfies all protected constraints."
+      reason:
+        "No candidate satisfies all protected constraints."
     };
   }
 
@@ -241,28 +292,35 @@ async function runCultureShift(
     preserveTags = []
   }
 ) {
-  const candidateIds = candidates.map(candidate => candidate.id);
+  const candidateIds = candidates.map(
+    candidate => candidate.id
+  );
 
-  const constraintResult = await applyPreserveConstraints(
-    env,
-    {
+  const constraintResult =
+    await applyPreserveConstraints(env, {
       options: candidateIds,
       audienceSignals,
       preserveTags
-    }
+    });
+
+  const feasibleIds = new Set(
+    constraintResult.feasible
   );
 
-  const feasibleIds = new Set(constraintResult.feasible);
+  const constrainedCandidates = candidates.map(
+    candidate => ({
+      ...candidate,
+      feasible: feasibleIds.has(candidate.id)
+    })
+  );
 
-  const constrainedCandidates = candidates.map(candidate => ({
-    ...candidate,
-    feasible: feasibleIds.has(candidate.id)
-  }));
+  const minimumChange = selectMinimumChange(
+    constrainedCandidates
+  );
 
-  const minimumChange =
-    selectMinimumChange(constrainedCandidates);
-
-  if (minimumChange.decision === "DO_NOT_CHANGE") {
+  if (
+    minimumChange.decision === "DO_NOT_CHANGE"
+  ) {
     return {
       decision: "DO_NOT_CHANGE",
       reason: minimumChange.reason,
@@ -271,7 +329,9 @@ async function runCultureShift(
   }
 
   const optionsToRank =
-    minimumChange.candidates.map(candidate => candidate.id);
+    minimumChange.candidates.map(
+      candidate => candidate.id
+    );
 
   const ranking = await qlooRank(env, {
     options: optionsToRank,
@@ -287,19 +347,150 @@ async function runCultureShift(
   };
 }
 
+/*
+ * Independent intervention evaluation.
+ *
+ * This is rule-based decision logic, not Qloo
+ * audience-affinity evidence.
+ */
+function evaluateInterventionRequest(body) {
+  const preserveCorePerformance =
+    body.preserveCorePerformance !== false;
+
+  const allowedIds =
+    body.allowedInterventionIds === undefined
+      ? INTERVENTION_OPTIONS.map(
+          item => item.id
+        )
+      : body.allowedInterventionIds;
+
+  if (
+    !Array.isArray(allowedIds) ||
+    allowedIds.some(
+      id => typeof id !== "string"
+    )
+  ) {
+    throw new TypeError(
+      "Invalid allowedInterventionIds."
+    );
+  }
+
+  const allowed = new Set(allowedIds);
+
+  const candidates =
+    INTERVENTION_OPTIONS.map(item => ({
+      ...item,
+      feasible:
+        allowed.has(item.id) &&
+        !(
+          preserveCorePerformance &&
+          item.changesCorePerformance
+        )
+    }));
+
+  const feasible = candidates.filter(
+    item => item.feasible
+  );
+
+  if (feasible.length === 0) {
+    return {
+      decision: "DO_NOT_CHANGE",
+      reason:
+        "No permitted intervention satisfies the defined preservation rules.",
+      candidates,
+      evidenceType:
+        "CultureShift rule-based feasibility; not Qloo audience-affinity evidence"
+    };
+  }
+
+  const minimumScope = Math.min(
+    ...feasible.map(item => item.scope)
+  );
+
+  return {
+    decision: "MINIMUM_INTERVENTION_FOUND",
+    interventionScope: minimumScope,
+    selected: feasible.filter(
+      item => item.scope === minimumScope
+    ),
+    candidates,
+    evidenceType:
+      "CultureShift rule-based feasibility; not Qloo audience-affinity evidence"
+  };
+}
+
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8"
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: {
+        "Content-Type":
+          "application/json; charset=utf-8"
+      }
     }
-  });
+  );
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    /*
+     * New intervention endpoint.
+     * Does not call Qloo.
+     */
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/interventions"
+    ) {
+      let body;
+
+      try {
+        body = await request.json();
+      } catch {
+        return json(
+          { error: "Invalid JSON request." },
+          400
+        );
+      }
+
+      try {
+        if (
+          !body ||
+          typeof body !== "object" ||
+          Array.isArray(body)
+        ) {
+          return json(
+            { error: "Expected a JSON object." },
+            400
+          );
+        }
+
+        return json(
+          evaluateInterventionRequest(body)
+        );
+      } catch (error) {
+        if (error instanceof TypeError) {
+          return json(
+            { error: error.message },
+            400
+          );
+        }
+
+        return json(
+          {
+            error:
+              "Intervention evaluation failed."
+          },
+          500
+        );
+      }
+    }
+
+    /*
+     * Existing health endpoint.
+     */
     if (
       request.method === "GET" &&
       url.pathname === "/health"
@@ -310,6 +501,9 @@ export default {
       });
     }
 
+    /*
+     * Existing Qloo-backed cultural bridge endpoint.
+     */
     if (
       request.method === "POST" &&
       url.pathname === "/api/evaluate"
@@ -322,33 +516,49 @@ export default {
 
         if (!audienceSignal) {
           return json(
-            { error: "Unsupported audience." },
+            {
+              error: "Unsupported audience."
+            },
             400
           );
         }
 
         const requestedPreserveTags = [];
-        const preserve = Array.isArray(body.preserve)
-          ? body.preserve
-          : [];
 
-        if (body.preserveClassical || preserve.includes("classical")) {
+        const preserve =
+          Array.isArray(body.preserve)
+            ? body.preserve
+            : [];
+
+        if (
+          body.preserveClassical ||
+          preserve.includes("classical")
+        ) {
           requestedPreserveTags.push(
             PRESERVE_TAGS.classical
           );
         }
 
-        if (body.preserveSitar || preserve.includes("sitar")) {
+        if (
+          body.preserveSitar ||
+          preserve.includes("sitar")
+        ) {
           requestedPreserveTags.push(
             PRESERVE_TAGS.sitar
           );
         }
 
-        const result = await runCultureShift(env, {
-          candidates: CANDIDATES,
-          audienceSignals: [audienceSignal],
-          preserveTags: requestedPreserveTags
-        });
+        const result = await runCultureShift(
+          env,
+          {
+            candidates: CANDIDATES,
+            audienceSignals: [
+              audienceSignal
+            ],
+            preserveTags:
+              requestedPreserveTags
+          }
+        );
 
         return json(result);
       } catch (error) {
@@ -359,7 +569,8 @@ export default {
 
         return json(
           {
-            error: "CultureShift evaluation failed."
+            error:
+              "CultureShift evaluation failed."
           },
           500
         );
@@ -371,7 +582,7 @@ export default {
         status: "ok",
         service: "CultureShift AI",
         message:
-          "Use POST /api/evaluate to run the cultural decision agent."
+          "Use POST /api/evaluate for Qloo cultural ranking or POST /api/interventions for rule-based intervention evaluation."
       },
       200
     );
