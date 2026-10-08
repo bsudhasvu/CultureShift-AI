@@ -298,3 +298,119 @@ footer {
     padding: 21px;
   }
 }
+
+/* CultureShift AI — Judge-facing decision results */
+
+.result-card {
+  padding: 32px;
+}
+
+.result-card h3 {
+  margin: 28px 0 14px;
+  color: var(--navy);
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.result-card p {
+  margin: 10px 0 16px;
+}
+
+.decision-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 24px 0 30px;
+}
+
+.decision-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 18px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+}
+
+.decision-summary span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.decision-summary strong {
+  color: var(--navy);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 14px 0 24px;
+}
+
+.evidence-item {
+  padding: 18px;
+  background: #f8faff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+
+.evidence-item strong {
+  color: var(--navy);
+}
+
+.evidence-item p {
+  margin: 10px 0 0;
+  color: #475569;
+  font-size: 14px;
+}
+
+.rejected-note {
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.ranking-list {
+  margin: 14px 0 22px;
+}
+
+.ranking-list li {
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ranking-list li span {
+  display: block;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.method-note {
+  margin-top: 20px !important;
+  padding: 16px 18px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+@media (max-width: 760px) {
+  .result-card {
+    padding: 21px;
+  }
+
+  .decision-summary,
+  .evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}
