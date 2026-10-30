@@ -31,6 +31,109 @@ function escapeHtml(value) {
   })[char]);
 }
 
+// The Guardian receipt is server-generated. The interface fails closed when
+// its decision, selected winner or protection context contradicts the result.
+// A SHA-256 fingerprint is NOT an upstream Qloo authentication signature.
+function checkDecisionProof(evaluation, protectedCount) {
+  const p = evaluation?.decision_proof;
+  if (!p || typeof p !== "object" || Array.isArray(p)) {
+    return { ok: false, reason: "The server did not return a Guardian decision receipt." };
+  }
+
+  const ctx = p.query_and_audience_context;
+  const summary = p.constraint_evidence_summary;
+  if (
+    p.proof_version !== "3.9.0-strict-explicit-options" ||
+    p.pipeline_decision !== evaluation.decision ||
+    p.decision_valid !== true ||
+    !ctx || ctx.audience_context_bound !== true ||
+    ctx.requested_preserve_tags_bound !== true ||
+    ctx.endpoint_context_valid !== true ||
+    ctx.configured_qloo_endpoint_label !== "/v2/insights" ||
+    ctx.comparison_context !== "single_shared_audience_query_over_minimum_scope_survivors" ||
+    !summary || summary.evidence_valid !== true ||
+    summary.requested_preserve_tags_bound !== true ||
+    p.constraints_requested !== (protectedCount > 0) ||
+    !/^sha256:[0-9a-f]{64}$/.test(p.receipt_payload_sha256 || "")
+  ) {
+    return { ok: false, reason: "The Guardian receipt does not match the trusted evaluation context." };
+  }
+
+  const expectedStatus = protectedCount > 0
+    ? "VERIFIED_PROTECTED_BRIDGE"
+    : "UNPROTECTED_BRIDGE_NO_CONSTRAINTS_REQUESTED";
+
+  if (evaluation.decision === "DO_NOT_CHANGE") {
+    return p.proof_integrity_status === "CONSISTENT_REFUSAL" && p.selected_candidate === null
+      ? { ok: true, proof: p }
+      : { ok: false, reason: "The Guardian refusal receipt failed validation." };
+  }
+
+  if (evaluation.decision !== "BRIDGE_FOUND" ||
+    p.proof_integrity_status !== expectedStatus ||
+    !p.selected_candidate ||
+    !p.minimum_scope_ranking ||
+    p.minimum_scope_ranking.ranking_executed !== true ||
+    p.minimum_scope_ranking.ranking_order_consistent !== true ||
+    p.minimum_scope_ranking.unique_entities_valid !== true ||
+    p.minimum_scope_ranking.result_count_consistent !== true ||
+    p.selected_candidate.in_minimum_scope_candidates !== true ||
+    p.selected_intervention_scope !== evaluation.interventionScope ||
+    (protectedCount > 0 && p.selected_candidate.identity_protected !== true) ||
+    !Array.isArray(evaluation.ranking?.results) ||
+    evaluation.ranking.results.length === 0 ||
+    p.minimum_scope_ranking.result_count !== evaluation.ranking.results.length ||
+    p.selected_candidate.entity_id !== evaluation.ranking.results[0].entity_id
+  ) {
+    return { ok: false, reason: "The Guardian winner or minimum-scope evidence is inconsistent." };
+  }
+  return { ok: true, proof: p };
+}
+
+function renderDecisionProof(proof, protectedCount) {
+  const isRefusal = proof.pipeline_decision === "DO_NOT_CHANGE";
+  const label = isRefusal
+    ? "Consistent refusal"
+    : protectedCount > 0 ? "Protected recommendation verified" : "Unprotected evaluation";
+  const stateText = isRefusal
+    ? "The available candidates did not satisfy all mandatory conditions. No change was recommended."
+    : protectedCount > 0
+      ? "The recommended bridge passed the requested identity checks and minimum-scope ranking consistency checks."
+      : "No identity constraints were selected. This result must not be described as identity-protected.";
+  const summary = proof.constraint_evidence_summary || {};
+  const tags = Array.isArray(summary.per_tag_allowed_counts)
+    ? summary.per_tag_allowed_counts : [];
+  const rows = tags.map(t => {
+    const rawTag = String(t.tag || t.constraint || "Constraint");
+    const text = constraintNames[rawTag] || rawTag;
+    const count = Number.isInteger(t.allowed_entity_count) ? t.allowed_entity_count : 0;
+    return `<li><strong>${escapeHtml(text)}</strong> — ${count} allowed candidate${count === 1 ? "" : "s"}</li>`;
+  }).join("");
+  const exceptions = Array.isArray(proof.uncertainty_and_limitations)
+    ? proof.uncertainty_and_limitations : [];
+  const limits = exceptions.filter(x => typeof x === "string").slice(0, 6)
+    .map(x => `<li>${escapeHtml(x)}</li>`).join("");
+  return `
+    <div class="guardian-proof" data-proof-status="${escapeHtml(proof.proof_integrity_status)}">
+      <div class="guardian-topline">
+        <span class="guardian-label">GUARDIAN · DECISION AUDIT</span>
+        <span class="guardian-status">${escapeHtml(label)}</span>
+      </div>
+      <p class="guardian-meaning">${escapeHtml(stateText)}</p>
+      <div class="guardian-metrics">
+        <div><span>Protected conditions</span><strong>${protectedCount}</strong></div>
+        <div><span>Intersection</span><strong>${Number.isInteger(summary.intersected_allowed_count) ? summary.intersected_allowed_count : 0} candidates</strong></div>
+        <div><span>Intervention scope</span><strong>${isRefusal ? "None" : escapeHtml(proof.selected_intervention_scope)}</strong></div>
+      </div>
+      ${tags.length ? `<details class="guardian-detail"><summary>Show constraint-by-constraint evidence</summary><ul>${rows}</ul></details>` : ""}
+      <details class="guardian-detail"><summary>Audit fingerprint and limitations</summary>
+        <p><strong>Receipt SHA-256</strong></p><code class="guardian-digest">${escapeHtml(proof.receipt_payload_sha256)}</code>
+        <p class="guardian-disclaimer">The digest checks the structure of this server-generated receipt; it does not authenticate the upstream Qloo API. Affinity is a ranking signal, not proof of improved audience engagement.</p>
+        ${limits ? `<ul class="guardian-limitations">${limits}</ul>` : ""}
+      </details>
+    </div>`;
+}
+
 async function postJson(path, payload) {
   const response = await fetch(path, {
     method: "POST",
@@ -149,6 +252,19 @@ runButton.addEventListener("click", async () => {
       preserveSitar
     });
 
+    const protectedCount = Number(preserveClassical) + Number(preserveSitar);
+    const proofCheck = checkDecisionProof(evaluation, protectedCount);
+    if (!proofCheck.ok) {
+      resultPanel.innerHTML = `
+        <span class="result-label">AGENT SAFETY CHECK</span>
+        <h2>Result withheld — evidence could not be verified</h2>
+        <p>${escapeHtml(proofCheck.reason)}</p>
+        <p class="method-note">No candidate is recommended when its decision receipt is missing or inconsistent. Please try again or contact the project team.</p>
+      `;
+      return;
+    }
+    const guardianHtml = renderDecisionProof(proofCheck.proof, protectedCount);
+
     const evidence = Array.isArray(evaluation.constraintEvidence)
       ? evaluation.constraintEvidence
       : [];
@@ -163,6 +279,7 @@ runButton.addEventListener("click", async () => {
           CultureShift refuses to force an incompatible adaptation.</p>
         <h3>Constraint evidence</h3>
         <div class="evidence-grid">${constraintHtml}</div>
+        ${guardianHtml}
         <p class="method-note">
           This refusal comes from the cultural bridge
           evaluation. No intervention is recommended.
@@ -203,6 +320,7 @@ runButton.addEventListener("click", async () => {
         ${renderInterventions(intervention)}
         <h3>Constraint evidence</h3>
         <div class="evidence-grid">${constraintHtml}</div>
+        ${guardianHtml}
       `;
       return;
     }
@@ -271,6 +389,8 @@ runButton.addEventListener("click", async () => {
 
       <h3>Qloo ranking of feasible cultural bridges</h3>
       <ol class="ranking-list">${rankingHtml}</ol>
+
+      ${guardianHtml}
 
       <p class="method-note">
         Qloo affinity ranks the surviving cultural bridge

@@ -1,3 +1,7 @@
+import {
+  assertNoSpoofedEvaluationFields,
+  buildDecisionProofFromRunResult,
+} from './proof.mjs';
 
 const QLOO_BASE_URL = "https://hackathon.api.qloo.com";
 
@@ -548,19 +552,23 @@ export default {
           );
         }
 
-        const result = await runCultureShift(
-          env,
-          {
-            candidates: CANDIDATES,
-            audienceSignals: [
-              audienceSignal
-            ],
-            preserveTags:
-              requestedPreserveTags
-          }
-        );
-
-        return json(result);
+        const spoofCheck = assertNoSpoofedEvaluationFields(body);
+      if (!spoofCheck.ok) {
+        return json({ error: spoofCheck.error }, 400);
+      }
+      const result = await runCultureShift(env, {
+        candidates: CANDIDATES,
+        audienceSignals: [audienceSignal],
+        preserveTags: requestedPreserveTags,
+      });
+      const decision_proof = await buildDecisionProofFromRunResult(result, {
+        requestedPreserveTags,
+        audienceSignals: [audienceSignal],
+        qlooEndpoint: '/v2/insights',
+        comparisonContext: 'single_shared_audience_query_over_minimum_scope_survivors',
+        knownCandidatePool: CANDIDATES,
+      });
+      return json({ ...result, decision_proof });
       } catch (error) {
         console.error(
           "CultureShift evaluation failed:",
